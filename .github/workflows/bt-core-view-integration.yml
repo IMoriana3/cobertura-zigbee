@@ -1,0 +1,72 @@
+name: bt-core-view-integration
+
+on:
+  push:
+    branches: [fix/true3d-shadow-safe-tangency-ui]
+    paths: [tools/install_bt_core_results.py, bt-canonical-results.js, tests/bt-canonical-results.test.cjs, tools/test_bt_core_browser.py]
+
+# Scoped branch-only application of a checked, deterministic one-line HTML
+# insertion. No secrets, private core code, production branch or deploy is used.
+permissions:
+  contents: write
+
+jobs:
+  apply-and-check:
+    if: github.ref == 'refs/heads/fix/true3d-shadow-safe-tangency-ui'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply only to the inspected simulator blob
+        run: |
+          python tools/test_bt_core_installer.py
+          python tools/install_bt_core_results.py
+      - name: Check consumer and protocol failures
+        run: |
+          node --check bt-canonical-results.js
+          node tests/bt-canonical-results.test.cjs
+          git diff --check
+      - name: Install browser test dependency
+        run: |
+          python -m pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+      - name: Preserve public pinned dependency for offline parity verification
+        run: python -m pip download --no-deps pvlib==0.13.1 -d bt-public-dependencies
+      - name: Check real simulator import and restoration
+        run: python tools/test_bt_core_browser.py
+      - name: Commit only the HTML insertion on this feature branch
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = 'fix/true3d-shadow-safe-tangency-ui'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- backtracking.html
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(bt): attach canonical read-only results to existing simulator'
+            git push origin HEAD:refs/heads/fix/true3d-shadow-safe-tangency-ui
+          fi
+          git rev-parse HEAD > bt-core-view-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bt-core-view-source-${{ github.sha }}
+          path: |
+            backtracking.html
+            bt-canonical-results.js
+            bt-core-view-commit.txt
+            bt-core-view-browser.png
+            lib/three.min.js
+            lib/OrbitControls.js
+            seguidor.js
+            sol.js
+            irradiancia.js
+            bt-public-dependencies/
+          retention-days: 7
