@@ -207,9 +207,9 @@ function mount(el,bridge){
     const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0));
     if(p1.schema==='overcast_p1_candidates_v2'){
       if(!p1run)runP1();const step=p1.steps[i],dec=p1run.decisions[i],base=step.candidates[step.baseline_candidate],cur=dec.candidate,prov=p1.provenance||{};
-      const hard=dec.locked===true,controlCount=p1.steps.filter(s=>s.control&&s.control.locked===true).length;
+      const hard=dec.locked===true,unscored=!cur,controlCount=p1.steps.filter(s=>s.control&&s.control.locked===true).length;
       $('p1status').textContent='P1 3D activo como evaluador de candidatos · '+(prov.shadow_judge||'juez no declarado')+' · '+(prov.geometry_source||'geometría no declarada')+' · IAM '+((prov.iam&&prov.iam.model)||'no declarado')+'. Objetivo: '+p1.objective+'. Trasera: '+((prov.rear&&prov.rear.status)||'no declarada')+'. CONTROL duro: '+controlCount+' pasos. Error máx de proyección al grid: '+f(p1run.maxProjectionErrorDeg,3)+'°.';
-      const thetaNow=hard?dec.theta[a]:cur.theta_by_asset_deg[a],poaNow=hard?'no evaluada':f(cur.poa_front_effective_w_m2),shadeNow=hard?'no evaluada':f(100*cur.shadow_max_fraction,2)+' % / '+f(100*cur.shadow_excess_max_fraction,3)+' pp',why=(OvercastEngine.REASONS[dec.reason]||dec.reason)+(dec.constraintSource?' · '+dec.constraintSource:'')+(dec.slewLimited?' · limitado por slew':'');
+      const thetaNow=unscored?dec.theta[a]:cur.theta_by_asset_deg[a],poaNow=unscored?'no evaluada':f(cur.poa_front_effective_w_m2),shadeNow=unscored?'no evaluada':f(100*cur.shadow_max_fraction,2)+' % / '+f(100*cur.shadow_excess_max_fraction,3)+' pp',why=(OvercastEngine.REASONS[dec.reason]||dec.reason)+(dec.constraintSource?' · '+dec.constraintSource:'')+(dec.slewLimited?' · limitado por slew':'');
       $('p1table').innerHTML='<tr><th>Activo</th><th>θ supervisor / baseline</th><th>POA útil candidato / baseline</th><th>Sombra máx / exceso</th><th>Decisión</th></tr><tr><td>'+esc(p1.asset_ids[a])+'</td><td>'+f(-thetaNow)+'° / '+f(-base.theta_by_asset_deg[a])+'°</td><td>'+poaNow+' / '+f(base.poa_front_effective_w_m2)+' W/m²</td><td>'+shadeNow+'</td><td>'+esc(why)+'</td></tr>';
       return;
     }
