@@ -4,7 +4,7 @@
   'use strict';
   const VERSION='adaptive-supervisor-v2';
   const DEFAULTS=Object.freeze({enterGainW:4,exitLossW:2,confirmMin:10,dwellMin:20,nearOptimalW:2,ghiMin:50});
-  const REASONS=Object.freeze({TRACKING:'Seguimiento de referencia',WAIT_CONFIRM:'Esperando persistencia de la ganancia',MIN_DWELL:'Mantiene el modo durante la permanencia mínima',HOLD_NEAR_OPTIMAL:'Retiene: mover apenas mejora la captación',GAIN_CONFIRMED:'Ganancia de POA total confirmada',RECOVER_BEAM:'Recupera seguimiento al reaparecer la directa',LOW_SIGNAL:'Radiación insuficiente para una maniobra adicional',INVALID_WEATHER:'Dato no válido: vuelve a referencia',SHADOW_GUARD:'La sombra obliga a volver a referencia',HARD_CONSTRAINT:'Una restricción superior de CONTROL bloquea la optimización difusa'});
+  const REASONS=Object.freeze({TRACKING:'Seguimiento de referencia',WAIT_CONFIRM:'Esperando persistencia de la ganancia',MIN_DWELL:'Mantiene el modo durante la permanencia mínima',HOLD_NEAR_OPTIMAL:'Retiene: mover apenas mejora la captación',GAIN_CONFIRMED:'Ganancia de POA total confirmada',RECOVER_BEAM:'Recupera seguimiento al reaparecer la directa',LOW_SIGNAL:'Radiación insuficiente para una maniobra adicional',INVALID_WEATHER:'Dato no válido: vuelve a referencia',SHADOW_GUARD:'La sombra obliga a volver a referencia',HARD_CONSTRAINT:'Una restricción superior de CONTROL bloquea la optimización difusa',SLEW_CANDIDATE:'Actuador limitado: usa el candidato P1 seguro alcanzable más próximo',SLEW_NO_CANDIDATE:'Actuador limitado: todavía no alcanza ningún candidato P1 seguro'});
   function config(input={}){
     const c={...DEFAULTS,...input};
     for(const k of Object.keys(DEFAULTS))if(!Number.isFinite(c[k])||c[k]<0)throw new Error('Parámetro inválido: '+k);
@@ -114,7 +114,7 @@
       const safe=all.filter(c=>c.admissible!==false&&dist(c.theta_by_asset_deg,current)<=reach+1e-9);
       if(!safe.length){
         lastT=stamp;
-        out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:null,reason:'SLEW_NO_CANDIDATE',slewLimited:true,physicsScored:false});
+        out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:null,reason:'SLEW_NO_CANDIDATE',mode:'slew_hold',slewLimited:true,physicsScored:false});
         continue;
       }
       safe.sort((a,b)=>dist(a.theta_by_asset_deg,decision.theta)-dist(b.theta_by_asset_deg,decision.theta)||b.poa_front_effective_w_m2-a.poa_front_effective_w_m2);
