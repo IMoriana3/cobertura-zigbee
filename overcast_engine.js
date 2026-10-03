@@ -82,7 +82,7 @@
       if(current===null)current=base.theta_by_asset_deg.slice();
       const nearest=[...all].sort((a,b)=>dist(a.theta_by_asset_deg,current)-dist(b.theta_by_asset_deg,current))[0];
       maxProjectionErrorDeg=Math.max(maxProjectionErrorDeg,dist(nearest.theta_by_asset_deg,current));
-      current=nearest.theta_by_asset_deg.slice();
+      const surrogateCurrent=nearest.theta_by_asset_deg.slice();
       const lookup=theta=>[...all].sort((a,b)=>dist(a.theta_by_asset_deg,theta)-dist(b.theta_by_asset_deg,theta))[0];
       const ctrl=step.control&&typeof step.control==='object'?step.control:null;
       const locked=!!(ctrl&&ctrl.locked===true);
@@ -91,7 +91,7 @@
       const q={
         t:stamp/60000,
         baseline:base.theta_by_asset_deg,
-        current,
+        current:surrogateCurrent,
         ghi:Number.isFinite(step.ghi)?step.ghi:100,
         dhi:Number.isFinite(step.dhi)?step.dhi:0,
         valid:step.valid!==false,
@@ -112,9 +112,13 @@
         continue;
       }
       const safe=all.filter(c=>c.admissible!==false&&dist(c.theta_by_asset_deg,current)<=reach+1e-9);
-      const pool=safe.length?safe:[nearest];
-      pool.sort((a,b)=>dist(a.theta_by_asset_deg,decision.theta)-dist(b.theta_by_asset_deg,decision.theta)||b.poa_front_effective_w_m2-a.poa_front_effective_w_m2);
-      const actual=pool[0],limited=dist(actual.theta_by_asset_deg,decision.theta)>1e-8;
+      if(!safe.length){
+        lastT=stamp;
+        out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:null,reason:'SLEW_NO_CANDIDATE',slewLimited:true,physicsScored:false});
+        continue;
+      }
+      safe.sort((a,b)=>dist(a.theta_by_asset_deg,decision.theta)-dist(b.theta_by_asset_deg,decision.theta)||b.poa_front_effective_w_m2-a.poa_front_effective_w_m2);
+      const actual=safe[0],limited=dist(actual.theta_by_asset_deg,decision.theta)>1e-8;
       current=actual.theta_by_asset_deg.slice();lastT=stamp;
       out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:actual,reason:limited?'SLEW_CANDIDATE':decision.reason,slewLimited:limited,physicsScored:true});
     }
