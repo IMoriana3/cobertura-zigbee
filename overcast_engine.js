@@ -2,24 +2,36 @@
  * Shared by the existing Overcast view and Node/batch adapters. */
 (function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.OvercastEngine=api;})(globalThis,function(){
   'use strict';
-  const VERSION='adaptive-supervisor-v1';
+  const VERSION='adaptive-supervisor-v2';
   const DEFAULTS=Object.freeze({enterGainW:4,exitLossW:2,confirmMin:10,dwellMin:20,nearOptimalW:2,ghiMin:50});
-  const REASONS=Object.freeze({TRACKING:'Seguimiento de referencia',WAIT_CONFIRM:'Esperando persistencia de la ganancia',MIN_DWELL:'Mantiene el modo durante la permanencia mínima',HOLD_NEAR_OPTIMAL:'Retiene: mover apenas mejora la captación',GAIN_CONFIRMED:'Ganancia de POA total confirmada',RECOVER_BEAM:'Recupera seguimiento al reaparecer la directa',LOW_SIGNAL:'Radiación insuficiente para una maniobra adicional',INVALID_WEATHER:'Dato no válido: vuelve a referencia',SHADOW_GUARD:'La sombra obliga a volver a referencia'});
+  const REASONS=Object.freeze({TRACKING:'Seguimiento de referencia',WAIT_CONFIRM:'Esperando persistencia de la ganancia',MIN_DWELL:'Mantiene el modo durante la permanencia mínima',HOLD_NEAR_OPTIMAL:'Retiene: mover apenas mejora la captación',GAIN_CONFIRMED:'Ganancia de POA total confirmada',RECOVER_BEAM:'Recupera seguimiento al reaparecer la directa',LOW_SIGNAL:'Radiación insuficiente para una maniobra adicional',INVALID_WEATHER:'Dato no válido: vuelve a referencia',SHADOW_GUARD:'La sombra obliga a volver a referencia',HARD_CONSTRAINT:'Una restricción superior de CONTROL bloquea la optimización difusa',SLEW_CANDIDATE:'Actuador limitado: usa el candidato P1 seguro alcanzable más próximo',SLEW_NO_CANDIDATE:'Actuador limitado: todavía no alcanza ningún candidato P1 seguro'});
   function config(input={}){
     const c={...DEFAULTS,...input};
     for(const k of Object.keys(DEFAULTS))if(!Number.isFinite(c[k])||c[k]<0)throw new Error('Parámetro inválido: '+k);
     return c;
   }
   function supervisor(input){
-    const c=config(input);let mode=false,pending=null,since=0,lastSwitch=-Infinity,lastTime=-Infinity;
+    const c=config(input);let mode=false,pending=null,since=0,lastSwitch=-Infinity,lastTime=-Infinity,lastCloud=null;
     return {step(q){
       if(!Number.isFinite(q.t)||q.t<=lastTime)throw new Error('El reloj de control debe crecer');lastTime=q.t;
       let reason='TRACKING',target=q.baseline;
+      const cloudCover=Number.isFinite(q.cloudCover)?q.cloudCover:null;
+      const cloudDelta=cloudCover!==null&&lastCloud!==null?cloudCover-lastCloud:null;
+      if(cloudCover!==null)lastCloud=cloudCover;
+      if(q.locked===true){
+        const hard=q.hardTarget===undefined?q.baseline:q.hardTarget,vals=Array.isArray(hard)?hard:[hard];
+        if(!vals.length||vals.some(v=>!Number.isFinite(v)))throw new Error('CONTROL duro sin target explícito');
+        mode=false;pending=null;since=q.t;lastSwitch=q.t;
+        return {theta:hard,flag:false,reason:'HARD_CONSTRAINT',mode:'locked',
+          gainW:0,pendingSince:null,fd:q.ghi>0?q.dhi/q.ghi:null,
+          locked:true,constraintSource:q.constraintSource||'hard_constraint',
+          cloudCover,cloudDelta};
+      }
       const base=q.evaluate(q.baseline),cur=q.evaluate(q.current);
       const valid=q.valid!==false&&Number.isFinite(base.total)&&Number.isFinite(cur.total);
       const safeCurrent=q.admissible(q.current);
       let best={theta:q.baseline,total:base.total};
-      for(const p of q.candidates)if(p.safe&&Number.isFinite(p.total)&&p.total>best.total+1e-9)best=p;
+      for(const p of (q.candidates||[]))if(p.safe&&Number.isFinite(p.total)&&p.total>best.total+1e-9)best=p;
       const gain=best.total-base.total;
       const inactive=!valid||q.ghi<=c.ghiMin||!safeCurrent;
       if(inactive){
@@ -41,7 +53,7 @@
       }
       const arr=v=>Array.isArray(v)?v:[v],tt=arr(target),cc=arr(q.current);
       const flat=tt.every(v=>Math.abs(v)<.05),held=tt.length===cc.length&&tt.every((v,i)=>Math.abs(v-cc[i])<.05);
-      return {theta:target,flag:mode,reason,mode:mode?(flat?'flat':held?'hold':'intermediate'):'track',gainW:gain,pendingSince:pending===null?null:since,fd:q.ghi>0?q.dhi/q.ghi:null};
+      return {theta:target,flag:mode,reason,mode:mode?(flat?'flat':held?'hold':'intermediate'):'track',gainW:gain,pendingSince:pending===null?null:since,fd:q.ghi>0?q.dhi/q.ghi:null,locked:false,constraintSource:null,cloudCover,cloudDelta};
     }};
   }
   function curve({min,max,step=.1,baseline,current,evaluate,admissible,nearOptimalW=2}){
@@ -60,6 +72,7 @@
     if(!pkg||pkg.schema!=='overcast_p1_candidates_v2'||!Array.isArray(pkg.steps)||!pkg.steps.length)throw new Error('Contrato P1 v2 incompatible');
     const slewDegS=Number.isFinite(input.slewDegS)?input.slewDegS:.17,control=supervisor(input),out=[];
     const arr=v=>Array.isArray(v)?v:[v],dist=(a,b)=>Math.max(...arr(a).map((v,i)=>Math.abs(v-arr(b)[i])));
+    const moveToward=(from,to,reach)=>arr(from).map((v,i)=>{const d=arr(to)[i]-v;return v+Math.sign(d)*Math.min(Math.abs(d),reach);});
     let current=null,lastT=null,maxProjectionErrorDeg=0;
     for(let i=0;i<pkg.steps.length;i++){
       const step=pkg.steps[i],stamp=Date.parse(step.timestamp),all=step.candidates;
@@ -69,26 +82,45 @@
       if(current===null)current=base.theta_by_asset_deg.slice();
       const nearest=[...all].sort((a,b)=>dist(a.theta_by_asset_deg,current)-dist(b.theta_by_asset_deg,current))[0];
       maxProjectionErrorDeg=Math.max(maxProjectionErrorDeg,dist(nearest.theta_by_asset_deg,current));
-      current=nearest.theta_by_asset_deg.slice();
+      const surrogateCurrent=nearest.theta_by_asset_deg.slice();
       const lookup=theta=>[...all].sort((a,b)=>dist(a.theta_by_asset_deg,theta)-dist(b.theta_by_asset_deg,theta))[0];
+      const ctrl=step.control&&typeof step.control==='object'?step.control:null;
+      const locked=!!(ctrl&&ctrl.locked===true);
+      const hardTarget=locked?ctrl.target_by_asset_deg:undefined;
+      if(locked&&(!Array.isArray(hardTarget)||hardTarget.length!==base.theta_by_asset_deg.length||hardTarget.some(v=>!Number.isFinite(v))))throw new Error('Paso P1 v2 bloqueado sin target CONTROL explícito');
       const q={
         t:stamp/60000,
         baseline:base.theta_by_asset_deg,
-        current,
+        current:surrogateCurrent,
         ghi:Number.isFinite(step.ghi)?step.ghi:100,
         dhi:Number.isFinite(step.dhi)?step.dhi:0,
         valid:step.valid!==false,
+        cloudCover:Number.isFinite(step.cloud_cover_fraction)?step.cloud_cover_fraction:null,
+        locked,
+        hardTarget,
+        constraintSource:locked?(ctrl.constraint_source||'hard_constraint'):null,
         candidates:all.map(c=>({theta:c.theta_by_asset_deg,total:c.poa_front_effective_w_m2,safe:c.admissible!==false,source:c})),
         evaluate:theta=>({total:lookup(theta).poa_front_effective_w_m2}),
         admissible:theta=>lookup(theta).admissible!==false
       };
       const decision=control.step(q),dtSec=lastT===null?Infinity:Math.max(0,(stamp-lastT)/1000),reach=slewDegS*dtSec;
+      if(decision.locked){
+        const actualTheta=moveToward(current,decision.theta,reach);
+        const limited=dist(actualTheta,decision.theta)>1e-8;
+        current=actualTheta.slice();lastT=stamp;
+        out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:null,reason:'HARD_CONSTRAINT',slewLimited:limited,physicsScored:false});
+        continue;
+      }
       const safe=all.filter(c=>c.admissible!==false&&dist(c.theta_by_asset_deg,current)<=reach+1e-9);
-      const pool=safe.length?safe:[nearest];
-      pool.sort((a,b)=>dist(a.theta_by_asset_deg,decision.theta)-dist(b.theta_by_asset_deg,decision.theta)||b.poa_front_effective_w_m2-a.poa_front_effective_w_m2);
-      const actual=pool[0],limited=dist(actual.theta_by_asset_deg,decision.theta)>1e-8;
+      if(!safe.length){
+        lastT=stamp;
+        out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:null,reason:'SLEW_NO_CANDIDATE',mode:'slew_hold',slewLimited:true,physicsScored:false});
+        continue;
+      }
+      safe.sort((a,b)=>dist(a.theta_by_asset_deg,decision.theta)-dist(b.theta_by_asset_deg,decision.theta)||b.poa_front_effective_w_m2-a.poa_front_effective_w_m2);
+      const actual=safe[0],limited=dist(actual.theta_by_asset_deg,decision.theta)>1e-8;
       current=actual.theta_by_asset_deg.slice();lastT=stamp;
-      out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:actual,reason:limited?'SLEW_CANDIDATE':decision.reason,slewLimited:limited});
+      out.push({...decision,theta:current.slice(),requestedTheta:decision.theta,candidate:actual,reason:limited?'SLEW_CANDIDATE':decision.reason,slewLimited:limited,physicsScored:true});
     }
     return {decisions:out,maxProjectionErrorDeg,objective:pkg.objective,provenance:pkg.provenance};
   }

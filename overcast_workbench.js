@@ -35,6 +35,13 @@ function parseP1(text){
       const st=p.steps[i];if(st.timestamp!==p.timestamp[i]||!Array.isArray(st.candidates)||!st.candidates.length)throw new Error('Paso P1 v2 inválido.');
       if(!Number.isInteger(st.baseline_candidate)||!st.candidates[st.baseline_candidate])throw new Error('Baseline P1 v2 inválida.');
       for(const c of st.candidates)if(!Array.isArray(c.theta_by_asset_deg)||c.theta_by_asset_deg.length!==r||c.theta_by_asset_deg.some(v=>!Number.isFinite(v))||!Number.isFinite(c.poa_front_effective_w_m2)||typeof c.admissible!=='boolean')throw new Error('Candidato P1 v2 inválido.');
+      if(st.cloud_cover_fraction!==undefined&&(!Number.isFinite(st.cloud_cover_fraction)||st.cloud_cover_fraction<0||st.cloud_cover_fraction>1))throw new Error('Cobertura de nube P1 v2 inválida.');
+      if(st.control!==undefined){
+        const ctl=st.control;if(!ctl||typeof ctl!=='object'||typeof ctl.locked!=='boolean')throw new Error('CONTROL P1 v2 inválido.');
+        if(ctl.locked===true){
+          if(!Array.isArray(ctl.target_by_asset_deg)||ctl.target_by_asset_deg.length!==r||ctl.target_by_asset_deg.some(v=>!Number.isFinite(v))||typeof ctl.constraint_source!=='string'||!ctl.constraint_source)throw new Error('CONTROL P1 v2 bloqueado sin target/fuente explícitos.');
+        }else if(ctl.target_by_asset_deg!==undefined&&(!Array.isArray(ctl.target_by_asset_deg)||ctl.target_by_asset_deg.length!==r||ctl.target_by_asset_deg.some(v=>!Number.isFinite(v))))throw new Error('Target CONTROL P1 v2 inválido.');
+      }
     }
     return p;
   }
@@ -83,7 +90,7 @@ function mount(el,bridge){
     <div class="eng-table"><table data-e="ranking"></table></div><div class="eng-table"><table data-e="validation"></table></div>
   </details>
   <details data-e="p1detail"><summary>Importar estudio 3D · P1</summary>
-    <p class="eng-note">Importa el resultado del motor 02/03/04/05: cotas y segmentos explícitos, identidad de cada tracker y acoplamiento por TCU. Comparte el reloj de esta pantalla. El archivo declara su procedencia; esta importación no certifica los datos ni envía órdenes.</p>
+    <p class="eng-note">Importa el resultado del motor 02/03/04/05: cotas y segmentos explícitos, identidad de cada tracker y acoplamiento por TCU. Si el expediente incluye CONTROL duro canónico, tiene precedencia sobre el optimizador y su target se ejecuta sin proyectarlo al grid P1. Comparte el reloj de esta pantalla. El archivo declara su procedencia; esta importación no certifica los datos ni envía órdenes.</p>
     <div class="eng-controls"><label>Resultado P1 · JSON<input data-e="p1file" type="file" accept=".json,application/json" style="width:220px"></label><label>Tracker del estudio<select data-e="p1asset"><option>Sin estudio</option></select></label></div>
     <p class="eng-note" data-e="p1status">Sin datos de cotas e identidad: no se deducen del orden del dibujo.</p>
     <div class="eng-table"><table data-e="p1table"></table></div>
@@ -200,8 +207,10 @@ function mount(el,bridge){
     const a=Math.max(0,Math.min(p1.asset_ids.length-1,+$('p1asset').value||0));
     if(p1.schema==='overcast_p1_candidates_v2'){
       if(!p1run)runP1();const step=p1.steps[i],dec=p1run.decisions[i],base=step.candidates[step.baseline_candidate],cur=dec.candidate,prov=p1.provenance||{};
-      $('p1status').textContent='P1 3D activo como evaluador de candidatos · '+(prov.shadow_judge||'juez no declarado')+' · '+(prov.geometry_source||'geometría no declarada')+' · IAM '+((prov.iam&&prov.iam.model)||'no declarado')+'. Objetivo: '+p1.objective+'. Trasera: '+((prov.rear&&prov.rear.status)||'no declarada')+'. Error máx de proyección al grid: '+f(p1run.maxProjectionErrorDeg,3)+'°.';
-      $('p1table').innerHTML='<tr><th>Activo</th><th>θ supervisor / baseline</th><th>POA útil candidato / baseline</th><th>Sombra máx / exceso</th><th>Decisión</th></tr><tr><td>'+esc(p1.asset_ids[a])+'</td><td>'+f(-cur.theta_by_asset_deg[a])+'° / '+f(-base.theta_by_asset_deg[a])+'°</td><td>'+f(cur.poa_front_effective_w_m2)+' / '+f(base.poa_front_effective_w_m2)+' W/m²</td><td>'+f(100*cur.shadow_max_fraction,2)+' % / '+f(100*cur.shadow_excess_max_fraction,3)+' pp</td><td>'+esc(OvercastEngine.REASONS[dec.reason]||dec.reason)+(dec.slewLimited?' · limitado por slew':'')+'</td></tr>';
+      const hard=dec.locked===true,unscored=!cur,controlCount=p1.steps.filter(s=>s.control&&s.control.locked===true).length;
+      $('p1status').textContent='P1 3D activo como evaluador de candidatos · '+(prov.shadow_judge||'juez no declarado')+' · '+(prov.geometry_source||'geometría no declarada')+' · IAM '+((prov.iam&&prov.iam.model)||'no declarado')+'. Objetivo: '+p1.objective+'. Trasera: '+((prov.rear&&prov.rear.status)||'no declarada')+'. CONTROL duro: '+controlCount+' pasos. Error máx de proyección al grid: '+f(p1run.maxProjectionErrorDeg,3)+'°.';
+      const thetaNow=unscored?dec.theta[a]:cur.theta_by_asset_deg[a],poaNow=unscored?'no evaluada':f(cur.poa_front_effective_w_m2),shadeNow=unscored?'no evaluada':f(100*cur.shadow_max_fraction,2)+' % / '+f(100*cur.shadow_excess_max_fraction,3)+' pp',why=(OvercastEngine.REASONS[dec.reason]||dec.reason)+(dec.constraintSource?' · '+dec.constraintSource:'')+(dec.slewLimited?' · limitado por slew':'');
+      $('p1table').innerHTML='<tr><th>Activo</th><th>θ supervisor / baseline</th><th>POA útil candidato / baseline</th><th>Sombra máx / exceso</th><th>Decisión</th></tr><tr><td>'+esc(p1.asset_ids[a])+'</td><td>'+f(-thetaNow)+'° / '+f(-base.theta_by_asset_deg[a])+'°</td><td>'+poaNow+' / '+f(base.poa_front_effective_w_m2)+' W/m²</td><td>'+shadeNow+'</td><td>'+esc(why)+'</td></tr>';
       return;
     }
     const site=p1.site&&p1.site.plant_id,match=!site||site===q.plant;
